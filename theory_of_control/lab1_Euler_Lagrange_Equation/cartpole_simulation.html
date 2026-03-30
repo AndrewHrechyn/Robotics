@@ -1,0 +1,319 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans,sans-serif);font-size:13px;color:var(--color-text-primary)}
+.wrap{display:flex;flex-direction:column;gap:10px;padding:10px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.panel{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:10px}
+.panel h3{font-size:13px;font-weight:500;margin-bottom:8px;color:var(--color-text-secondary)}
+.param-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.param-row{display:flex;flex-direction:column;gap:2px}
+.param-row label{font-size:11px;color:var(--color-text-secondary)}
+.param-row input[type=range]{width:100%;accent-color:var(--color-text-info)}
+.param-row .val{font-size:12px;font-weight:500;color:var(--color-text-primary)}
+.btn{padding:6px 16px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500}
+.btn-primary{background:var(--color-text-info,#1a6fc4);color:#fff}
+.btn-secondary{background:var(--color-background-tertiary);color:var(--color-text-primary);border:0.5px solid var(--color-border-secondary)}
+canvas{border-radius:8px;display:block}
+.canvases{display:flex;gap:8px;flex-wrap:wrap}
+.cv-wrap{flex:1;min-width:280px}
+.cv-wrap label{font-size:11px;color:var(--color-text-secondary);display:block;margin-bottom:4px}
+.tabs{display:flex;gap:4px;margin-bottom:8px}
+.tab{padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary)}
+.tab.active{background:var(--color-text-info,#1a6fc4);color:#fff;border-color:transparent}
+.status{font-size:11px;color:var(--color-text-tertiary);padding:2px 0}
+</style>
+<div class="wrap">
+  <div class="row">
+    <!-- Parameters -->
+    <div class="panel" style="flex:1;min-width:260px">
+      <h3>Параметри системи</h3>
+      <div class="param-grid">
+        <div class="param-row"><label>M — маса візка (kg)</label><input type="range" id="pM" min="0.5" max="5" step="0.1" value="1.0"><span class="val" id="vM">1.0</span></div>
+        <div class="param-row"><label>m — маса маятника (kg)</label><input type="range" id="pm" min="0.1" max="2" step="0.05" value="0.3"><span class="val" id="vm">0.3</span></div>
+        <div class="param-row"><label>l — довжина (m)</label><input type="range" id="pl" min="0.2" max="2" step="0.05" value="0.8"><span class="val" id="vl">0.8</span></div>
+        <div class="param-row"><label>b — тертя візка</label><input type="range" id="pb" min="0" max="2" step="0.05" value="0.1"><span class="val" id="vb">0.1</span></div>
+        <div class="param-row"><label>c — демпфер кута</label><input type="range" id="pc" min="0" max="0.5" step="0.01" value="0.01"><span class="val" id="vc">0.01</span></div>
+        <div class="param-row"><label>F — стала сила (N)</label><input type="range" id="pF" min="-5" max="5" step="0.1" value="0"><span class="val" id="vF">0.0</span></div>
+      </div>
+    </div>
+    <!-- Initial conditions -->
+    <div class="panel" style="flex:1;min-width:220px">
+      <h3>Початкові умови</h3>
+      <div class="param-grid">
+        <div class="param-row"><label>x₀ (m)</label><input type="range" id="ix" min="-1" max="1" step="0.05" value="0"><span class="val" id="ivx">0.0</span></div>
+        <div class="param-row"><label>ẋ₀ (m/s)</label><input type="range" id="idx" min="-2" max="2" step="0.1" value="0"><span class="val" id="ivdx">0.0</span></div>
+        <div class="param-row"><label>θ₀ (°)</label><input type="range" id="ith" min="-30" max="30" step="1" value="10"><span class="val" id="ivth">10°</span></div>
+        <div class="param-row"><label>θ̇₀ (rad/s)</label><input type="range" id="idth" min="-2" max="2" step="0.1" value="0"><span class="val" id="ivdth">0.0</span></div>
+        <div class="param-row"><label>Тривалість (s)</label><input type="range" id="pT" min="2" max="20" step="1" value="8"><span class="val" id="vT">8</span></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btnRun">▶ Симулювати</button>
+        <button class="btn btn-secondary" id="btnStop">⏸</button>
+        <button class="btn btn-secondary" id="btnReset">↺</button>
+      </div>
+      <div class="status" id="status">Натисніть «Симулювати»</div>
+    </div>
+  </div>
+
+  <!-- Animation + charts -->
+  <div class="canvases">
+    <div class="cv-wrap" style="flex:0 0 auto;min-width:300px;max-width:340px">
+      <label>Анімація</label>
+      <canvas id="anim" width="320" height="240"></canvas>
+    </div>
+    <div class="cv-wrap" style="flex:1;min-width:260px">
+      <div class="tabs">
+        <button class="tab active" data-tab="angle">Кут θ(t)</button>
+        <button class="tab" data-tab="pos">Позиція x(t)</button>
+        <button class="tab" data-tab="phase">Фазова площина</button>
+      </div>
+      <canvas id="chart" width="360" height="240"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const g = 9.81;
+let state = null, animId = null, simData = null, playing = false, tIdx = 0;
+const params = () => ({
+  M: +document.getElementById('pM').value,
+  m: +document.getElementById('pm').value,
+  l: +document.getElementById('pl').value,
+  b: +document.getElementById('pb').value,
+  c: +document.getElementById('pc').value,
+  F: +document.getElementById('pF').value,
+  T: +document.getElementById('pT').value,
+  x0: +document.getElementById('ix').value,
+  dx0: +document.getElementById('idx').value,
+  th0: +document.getElementById('ith').value * Math.PI/180,
+  dth0: +document.getElementById('idth').value
+});
+
+// Hook sliders
+['M','m','l','b','c','F','T'].forEach(k=>{
+  const el=document.getElementById('p'+k);
+  const vl=document.getElementById('v'+k);
+  el.oninput=()=>{vl.textContent=parseFloat(el.value).toFixed(k==='F'?1:k==='T'?0:2)};
+});
+['x','dx','th','dth'].forEach(k=>{
+  const el=document.getElementById('i'+k);
+  const vl=document.getElementById('iv'+k);
+  el.oninput=()=>{
+    let v=parseFloat(el.value).toFixed(1);
+    vl.textContent=(k==='th'?v+'°':v);
+  };
+});
+
+// RK4
+function deriv(s, p){
+  const [x, dx, th, dth] = s;
+  const {M,m,l,b,c,F} = p;
+  const sth=Math.sin(th), cth=Math.cos(th);
+  const D = (M+m)*m*l*l - m*m*l*l*cth*cth;
+  const ddx = (m*l*l*(F - b*dx + m*l*dth*dth*sth) - m*l*cth*(m*g*l*sth - c*dth)) / D;
+  const ddth = ((M+m)*(m*g*l*sth - c*dth) - m*l*cth*(F - b*dx + m*l*dth*dth*sth)) / D;
+  return [dx, ddx, dth, ddth];
+}
+function rk4(s, dt, p){
+  const add=(a,b,h)=>a.map((v,i)=>v+h*b[i]);
+  const k1=deriv(s,p);
+  const k2=deriv(add(s,k1,dt/2),p);
+  const k3=deriv(add(s,k2,dt/2),p);
+  const k4=deriv(add(s,k3,dt),p);
+  return s.map((v,i)=>v+(dt/6)*(k1[i]+2*k2[i]+2*k3[i]+k4[i]));
+}
+
+function simulate(){
+  const p=params();
+  const dt=0.01, N=Math.round(p.T/dt)+1;
+  const ts=[],xs=[],dxs=[],ths=[],dths=[];
+  let s=[p.x0, p.dx0, p.th0, p.dth0];
+  for(let i=0;i<N;i++){
+    ts.push(i*dt); xs.push(s[0]); dxs.push(s[1]); ths.push(s[2]); dths.push(s[3]);
+    s=rk4(s,dt,p);
+  }
+  return {ts,xs,dxs,ths,dths,p};
+}
+
+let activeTab='angle';
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    activeTab=t.dataset.tab;
+    if(simData) drawChart(simData);
+  };
+});
+
+function isDark(){return matchMedia('(prefers-color-scheme:dark)').matches}
+function getColors(){
+  return {
+    bg: isDark()?'#1e1e1e':'#f8f8f6',
+    track: isDark()?'#3a3a38':'#e0ddd4',
+    cart: isDark()?'#5a7fc4':'#2a5fa8',
+    rod: isDark()?'#e0ddd4':'#3d3d3a',
+    bob: isDark()?'#e8693c':'#c04828',
+    grid: isDark()?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.07)',
+    line1: isDark()?'#5a8fe0':'#1a6fc4',
+    line2: isDark()?'#e8693c':'#c04828',
+    text: isDark()?'#c2c0b6':'#3d3d3a',
+    axisLine: isDark()?'rgba(255,255,255,0.2)':'rgba(0,0,0,0.18)',
+  };
+}
+
+function drawAnim(d, tIdx){
+  const cv=document.getElementById('anim');
+  const ctx=cv.getContext('2d');
+  const W=cv.width, H=cv.height;
+  const c=getColors();
+  ctx.clearRect(0,0,W,H);
+  // bg
+  ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+  // rail
+  const cy=H*0.55, scale=60;
+  ctx.strokeStyle=c.track; ctx.lineWidth=3; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(20,cy+18); ctx.lineTo(W-20,cy+18); ctx.stroke();
+  // wheels
+  const cx=W/2 + d.xs[tIdx]*scale;
+  [cx-18,cx+18].forEach(wx=>{
+    ctx.beginPath(); ctx.arc(wx,cy+22,7,0,2*Math.PI);
+    ctx.fillStyle=c.track; ctx.fill();
+    ctx.strokeStyle=c.rod; ctx.lineWidth=1; ctx.stroke();
+  });
+  // cart body
+  ctx.fillStyle=c.cart;
+  ctx.beginPath(); ctx.roundRect(cx-28,cy-14,56,32,5); ctx.fill();
+  // rod
+  const th=d.ths[tIdx];
+  const px=cx+d.p.l*scale*Math.sin(th);
+  const py=cy-14-d.p.l*scale*Math.cos(th);
+  ctx.strokeStyle=c.rod; ctx.lineWidth=3; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(cx,cy-14); ctx.lineTo(px,py); ctx.stroke();
+  // bob
+  ctx.beginPath(); ctx.arc(px,py,9,0,2*Math.PI);
+  ctx.fillStyle=c.bob; ctx.fill();
+  ctx.strokeStyle=c.rod; ctx.lineWidth=1.5; ctx.stroke();
+  // time label
+  ctx.fillStyle=c.text; ctx.font='11px var(--font-sans,sans-serif)';
+  ctx.fillText('t = '+d.ts[tIdx].toFixed(2)+'s', 8, 16);
+  ctx.fillText('θ = '+(d.ths[tIdx]*180/Math.PI).toFixed(1)+'°', 8, 30);
+  ctx.fillText('x = '+d.xs[tIdx].toFixed(3)+'m', 8, 44);
+}
+
+function drawChart(d){
+  const cv=document.getElementById('chart');
+  const ctx=cv.getContext('2d');
+  const W=cv.width, H=cv.height;
+  const c=getColors();
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+  const pad={l:36,r:12,t:16,b:28};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  let xs,ys,ys2,xl,yl;
+  if(activeTab==='angle'){
+    xs=d.ts; ys=d.ths.map(v=>v*180/Math.PI); ys2=d.dths;
+    xl='t (s)'; yl='θ (°)';
+  } else if(activeTab==='pos'){
+    xs=d.ts; ys=d.xs; ys2=d.dxs;
+    xl='t (s)'; yl='x (m)';
+  } else {
+    xs=d.ths.map(v=>v*180/Math.PI); ys=d.dths; ys2=null;
+    xl='θ (°)'; yl='θ̇ (rad/s)';
+  }
+
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const allY=[...ys,...(ys2||[])];
+  let minY=Math.min(...allY), maxY=Math.max(...allY);
+  const padY=(maxY-minY)*0.1||0.1; minY-=padY; maxY+=padY;
+  const tx=v=>(v-minX)/(maxX-minX||1)*pw+pad.l;
+  const ty=v=>(1-(v-minY)/(maxY-minY))*ph+pad.t;
+
+  // grid
+  ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=pad.t+i*ph/4;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+  }
+  // axes
+  ctx.strokeStyle=c.axisLine; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,H-pad.b); ctx.stroke();
+  ctx.fillStyle=c.text; ctx.font='10px var(--font-sans,sans-serif)';
+  ctx.fillText(xl,W/2-10,H-4);
+  ctx.save(); ctx.translate(10,H/2); ctx.rotate(-Math.PI/2); ctx.fillText(yl,0,0); ctx.restore();
+
+  // zero line
+  if(minY<0 && maxY>0){
+    const y0=ty(0); ctx.strokeStyle=c.axisLine; ctx.lineWidth=0.5; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(W-pad.r,y0); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // line 1
+  const step=Math.max(1,Math.floor(xs.length/400));
+  ctx.strokeStyle=c.line1; ctx.lineWidth=1.5; ctx.lineJoin='round';
+  ctx.beginPath();
+  for(let i=0;i<xs.length;i+=step){ctx.lineTo(tx(xs[i]),ty(ys[i]));}
+  ctx.stroke();
+
+  // line 2
+  if(ys2){
+    ctx.strokeStyle=c.line2; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    for(let i=0;i<xs.length;i+=step){ctx.lineTo(tx(xs[i]),ty(ys2[i]));}
+    ctx.stroke(); ctx.setLineDash([]);
+    // legend
+    ctx.fillStyle=c.line1; ctx.fillRect(pad.l,4,12,3);
+    ctx.fillStyle=c.text; ctx.fillText(yl,pad.l+16,11);
+    ctx.fillStyle=c.line2;
+    ctx.fillRect(pad.l+70,4,12,3);
+    ctx.fillStyle=c.text; ctx.fillText(activeTab==='angle'?'θ̇ (rad/s)':'ẋ (m/s)',pad.l+86,11);
+  }
+
+  // current time marker
+  if(tIdx>0){
+    const xc=tx(xs[Math.min(tIdx,xs.length-1)]);
+    ctx.strokeStyle=c.bob; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(xc,pad.t); ctx.lineTo(xc,H-pad.b); ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+document.getElementById('btnRun').onclick=()=>{
+  if(animId) cancelAnimationFrame(animId);
+  simData=simulate();
+  tIdx=0; playing=true;
+  document.getElementById('status').textContent='Симуляція запущена...';
+  animate();
+};
+document.getElementById('btnStop').onclick=()=>{
+  playing=!playing;
+  document.getElementById('btnStop').textContent=playing?'⏸':'▶';
+  if(playing) animate();
+};
+document.getElementById('btnReset').onclick=()=>{
+  if(animId) cancelAnimationFrame(animId); playing=false;
+  tIdx=0; simData=null;
+  document.getElementById('status').textContent='Скинуто';
+  document.getElementById('btnStop').textContent='⏸';
+  const cv=document.getElementById('anim'); const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const cc=document.getElementById('chart'); const ctx2=cc.getContext('2d');
+  ctx2.clearRect(0,0,cc.width,cc.height);
+};
+
+function animate(){
+  if(!playing||!simData){return;}
+  drawAnim(simData,tIdx);
+  drawChart(simData);
+  tIdx+=2;
+  if(tIdx>=simData.ts.length){
+    tIdx=simData.ts.length-1;
+    playing=false;
+    document.getElementById('status').textContent='Готово. T='+simData.p.T+'s, '+simData.ts.length+' кроків';
+    document.getElementById('btnStop').textContent='▶';
+    drawChart(simData);
+    return;
+  }
+  animId=requestAnimationFrame(animate);
+}
+</script>
