@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Обернений маятник з PID</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+      padding: 16px;
+    }
+    .wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .row {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .panel {
+      background: white;
+      border: 1px solid #dbe3ef;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.04);
+    }
+    .panel h3 {
+      font-size: 15px;
+      margin-bottom: 10px;
+      color: #334155;
+    }
+    .param-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .param-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .param-row label {
+      font-size: 12px;
+      color: #475569;
+    }
+    .param-row input[type=range] {
+      width: 100%;
+      accent-color: #2563eb;
+    }
+    .param-row .val {
+      font-size: 12px;
+      font-weight: bold;
+      color: #111827;
+    }
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-secondary { background: #e5e7eb; color: #111827; }
+    .btn-pid { background: #16a34a; color: white; }
+    .btn-danger { background: #dc2626; color: white; }
+    .status {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .canvases {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .cv-wrap {
+      flex: 1;
+      min-width: 320px;
+    }
+    .cv-wrap label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: #475569;
+    }
+    canvas {
+      background: white;
+      border: 1px solid #dbe3ef;
+      border-radius: 12px;
+      display: block;
+    }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      border: 1px solid #cbd5e1;
+      background: white;
+      color: #334155;
+    }
+    .tab.active {
+      background: #2563eb;
+      color: white;
+      border-color: #2563eb;
+    }
+    .hint {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    .good {
+      color: #15803d;
+      font-weight: bold;
+    }
+    .warn {
+      color: #b45309;
+      font-weight: bold;
+    }
+    .danger {
+      color: #b91c1c;
+      font-weight: bold;
+    }
+    @media (max-width: 768px) {
+      .param-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="row">
+    <!-- System params -->
+    <div class="panel" style="flex:1;min-width:320px">
+      <h3>Параметри системи (як у Python)</h3>
+      <div class="param-grid">
+        <div class="param-row"><label>M — маса візка (kg)</label><input type="range" id="pM" min="1" max="20" step="0.5" value="10"><span class="val" id="vM">10.0</span></div>
+        <div class="param-row"><label>m — маса маятника (kg)</label><input type="range" id="pm" min="0.1" max="5" step="0.1" value="2"><span class="val" id="vm">2.0</span></div>
+        <div class="param-row"><label>l — довжина (m)</label><input type="range" id="pl" min="0.2" max="3" step="0.05" value="2"><span class="val" id="vl">2.00</span></div>
+        <div class="param-row"><label>b — тертя візка</label><input type="range" id="pb" min="0" max="5" step="0.01" value="0.1"><span class="val" id="vb">0.10</span></div>
+        <div class="param-row"><label>c — демпфер кута</label><input type="range" id="pc" min="0" max="1" step="0.01" value="0.01"><span class="val" id="vc">0.01</span></div>
+        <div class="param-row"><label>dt</label><input type="range" id="pdt" min="0.005" max="0.05" step="0.001" value="0.03"><span class="val" id="vdt">0.030</span></div>
+      </div>
+    </div>
+
+    <!-- Initial conditions -->
+    <div class="panel" style="flex:1;min-width:300px">
+      <h3>Початкові умови</h3>
+      <div class="param-grid">
+        <div class="param-row"><label>x₀ (m)</label><input type="range" id="ix" min="-2" max="2" step="0.05" value="0"><span class="val" id="ivx">0.00</span></div>
+        <div class="param-row"><label>ẋ₀ (m/s)</label><input type="range" id="idx" min="-20" max="20" step="0.1" value="10"><span class="val" id="ivdx">10.0</span></div>
+        <div class="param-row"><label>θ₀ (°)</label><input type="range" id="ith" min="-30" max="30" step="0.5" value="11.5"><span class="val" id="ivth">11.5°</span></div>
+        <div class="param-row"><label>θ̇₀ (rad/s)</label><input type="range" id="idth" min="-10" max="10" step="0.1" value="0"><span class="val" id="ivdth">0.0</span></div>
+        <div class="param-row"><label>Кількість кроків</label><input type="range" id="pSteps" min="100" max="1000" step="10" value="400"><span class="val" id="vSteps">400</span></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btnRun">▶ Відкрита система</button>
+        <button class="btn btn-pid" id="btnRunPID">▶ PID</button>
+        <button class="btn btn-secondary" id="btnStop">⏸ Пауза</button>
+        <button class="btn btn-danger" id="btnReset">↺ Reset</button>
+      </div>
+      <div class="status" id="status">Натисни «PID» для запуску стабілізації.</div>
+    </div>
+
+    <!-- PID -->
+    <div class="panel" style="flex:1;min-width:320px;border:1px solid #bbf7d0;background:#f0fdf4">
+      <h3>PID-регулятор (логіка як у Python)</h3>
+      <div class="param-grid">
+        <div class="param-row"><label>Kp</label><input type="range" id="pKp" min="0" max="1000" step="1" value="150"><span class="val" id="vKp">150</span></div>
+        <div class="param-row"><label>Ki</label><input type="range" id="pKi" min="0" max="2000" step="1" value="50"><span class="val" id="vKi">50</span></div>
+        <div class="param-row"><label>Kd</label><input type="range" id="pKd" min="0" max="500" step="1" value="25"><span class="val" id="vKd">25</span></div>
+        <div class="param-row"><label>Window size (інтеграл)</label><input type="range" id="pWin" min="1" max="100" step="1" value="20"><span class="val" id="vWin">20</span></div>
+        <div class="param-row"><label>Fmax (0 = без обмеження)</label><input type="range" id="pFmax" min="0" max="1000" step="10" value="0"><span class="val" id="vFmax">0</span></div>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" id="presetP">Тільки P</button>
+        <button class="btn btn-secondary" id="presetPD">PD</button>
+        <button class="btn btn-secondary" id="presetPID">PID (Python)</button>
+        <button class="btn btn-secondary" id="presetHeavy">Великий опір</button>
+      </div>
+
+      <div class="hint">
+        Формула як у Python:<br>
+        <b>F = Kp·θ + Ki·Σ(θ·dt) + Kd·θ̇</b><br>
+        <span class="good">Знак такий самий, як у твоєму робочому коді.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="canvases">
+    <div class="cv-wrap" style="flex:0 0 auto;min-width:340px;max-width:420px">
+      <label>Анімація</label>
+      <canvas id="anim" width="400" height="280"></canvas>
+    </div>
+
+    <div class="cv-wrap" style="flex:1;min-width:400px">
+      <div class="tabs">
+        <button class="tab active" data-tab="angle">Кут θ(t)</button>
+        <button class="tab" data-tab="omega">Швидкість θ̇(t)</button>
+        <button class="tab" data-tab="pos">Позиція x(t)</button>
+        <button class="tab" data-tab="force">Сила F(t)</button>
+        <button class="tab" data-tab="phase">Фазова площина</button>
+      </div>
+      <canvas id="chart" width="800" height="280"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const g = 9.8;
+let animId = null;
+let simData = null;
+let playing = false;
+let tIdx = 0;
+let activeTab = 'angle';
+
+function $(id){ return document.getElementById(id); }
+
+function params(){
+  return {
+    M: +$('pM').value,
+    m: +$('pm').value,
+    l: +$('pl').value,
+    b: +$('pb').value,
+    c: +$('pc').value,
+    dt: +$('pdt').value,
+    steps: +$('pSteps').value,
+
+    x0: +$('ix').value,
+    dx0: +$('idx').value,
+    th0: +$('ith').value * Math.PI / 180,
+    dth0: +$('idth').value,
+
+    Kp: +$('pKp').value,
+    Ki: +$('pKi').value,
+    Kd: +$('pKd').value,
+    win: +$('pWin').value,
+    Fmax: +$('pFmax').value,
+  };
+}
+
+// ---------- sliders ----------
+[
+  ['pM','vM',1],['pm','vm',1],['pl','vl',2],['pb','vb',2],['pc','vc',2],
+  ['pdt','vdt',3],['pSteps','vSteps',0],
+  ['ix','ivx',2],['idx','ivdx',1],['ith','ivth','deg'],['idth','ivdth',1],
+  ['pKp','vKp',0],['pKi','vKi',0],['pKd','vKd',0],['pWin','vWin',0],['pFmax','vFmax',0]
+].forEach(([sid, vid, fmt])=>{
+  const s = $(sid), v = $(vid);
+  s.oninput = () => {
+    const val = parseFloat(s.value);
+    if(fmt === 'deg') v.textContent = val.toFixed(1) + '°';
+    else v.textContent = val.toFixed(fmt);
+  };
+});
+
+function setSlider(id, val){
+  $(id).value = val;
+  $(id).dispatchEvent(new Event('input'));
+}
+
+// ---------- presets ----------
+$('presetP').onclick = () => {
+  setSlider('pKp', 150);
+  setSlider('pKi', 0);
+  setSlider('pKd', 0);
+};
+
+$('presetPD').onclick = () => {
+  setSlider('pKp', 150);
+  setSlider('pKi', 0);
+  setSlider('pKd', 40);
+};
+
+$('presetPID').onclick = () => {
+  // як у твоєму Python
+  setSlider('pM', 10);
+  setSlider('pm', 2);
+  setSlider('pl', 2);
+  setSlider('pb', 0.1);
+  setSlider('pc', 0.01);
+  setSlider('pdt', 0.03);
+  setSlider('pSteps', 400);
+
+  setSlider('ix', 0);
+  setSlider('idx', 10);
+  setSlider('ith', 11.5);
+  setSlider('idth', 0);
+
+  setSlider('pKp', 150);
+  setSlider('pKi', 50);
+  setSlider('pKd', 25);
+  setSlider('pWin', 20);
+  setSlider('pFmax', 0);
+};
+
+$('presetHeavy').onclick = () => {
+  // твій другий сценарій
+  setSlider('pb', 100);
+  setSlider('pc', 10);
+  setSlider('pKp', 600);
+  setSlider('pKi', 1000);
+  setSlider('pKd', 0);
+  setSlider('pWin', 400);
+  setSlider('pFmax', 0);
+};
+
+// ---------- physics (1-в-1 як Python через матрицю) ----------
+function deriv(state, p, F){
+  const [x, dx, th, dth] = state;
+  const {M, m, l, b, c} = p;
+
+  const cth = Math.cos(th);
+  const sth = Math.sin(th);
+
+  // A matrix
+  const a11 = M + m;
+  const a12 = m * l * cth;
+  const a21 = m * l * cth;
+  const a22 = m * l * l;
+
+  // B vector (як у Python)
+  const b1 = F - b * dx + m * l * dth * dth * sth;
+  const b2 = -c * dth + m * g * l * sth;
+
+  const det = a11 * a22 - a12 * a21;
+
+  // solve A * [ddx, ddth] = B
+  const ddx = (b1 * a22 - a12 * b2) / det;
+  const ddth = (a11 * b2 - a21 * b1) / det;
+
+  return [dx, ddx, dth, ddth];
+}
+
+function rk4step(s, dt, p, F){
+  const add = (a, b, h) => a.map((v,i) => v + h * b[i]);
+
+  const k1 = deriv(s, p, F);
+  const k2 = deriv(add(s, k1, dt/2), p, F);
+  const k3 = deriv(add(s, k2, dt/2), p, F);
+  const k4 = deriv(add(s, k3, dt), p, F);
+
+  return s.map((v,i) => v + (dt/6) * (k1[i] + 2*k2[i] + 2*k3[i] + k4[i]));
+}
+
+// ---------- simulations ----------
+function simulateOpenLoop(){
+  const p = params();
+  const dt = p.dt;
+  const N = p.steps;
+
+  const ts=[], xs=[], dxs=[], ths=[], dths=[], Fs=[];
+  let s = [p.x0, p.dx0, p.th0, p.dth0];
+  const F = 0;
+
+  for(let i=0; i<N; i++){
+    ts.push(i * dt);
+    xs.push(s[0]);
+    dxs.push(s[1]);
+    ths.push(s[2]);
+    dths.push(s[3]);
+    Fs.push(F);
+
+    s = rk4step(s, dt, p, F);
+  }
+
+  return {ts, xs, dxs, ths, dths, Fs, p, pid:false};
+}
+
+function simulatePID(){
+  const p = params();
+  const dt = p.dt;
+  const N = p.steps;
+
+  const ts=[], xs=[], dxs=[], ths=[], dths=[], Fs=[];
+  let s = [p.x0, p.dx0, p.th0, p.dth0];
+
+  let errorHistory = [];
+
+  for(let i=0; i<N; i++){
+    ts.push(i * dt);
+    xs.push(s[0]);
+    dxs.push(s[1]);
+    ths.push(s[2]);
+    dths.push(s[3]);
+
+    const theta = s[2];
+    const dtheta = s[3];
+
+    // 1-в-1 як у Python:
+    const error = theta;
+
+    errorHistory.push(error * dt);
+    if(errorHistory.length > p.win){
+      errorHistory.shift();
+    }
+
+    const integralPart = errorHistory.reduce((a,b)=>a+b, 0);
+
+    let F = p.Kp * error + p.Ki * integralPart + p.Kd * dtheta;
+
+    // опційне обмеження сили
+    if(p.Fmax > 0){
+      F = Math.max(-p.Fmax, Math.min(p.Fmax, F));
+    }
+
+    Fs.push(F);
+    s = rk4step(s, dt, p, F);
+  }
+
+  return {ts, xs, dxs, ths, dths, Fs, p, pid:true};
+}
+
+// ---------- tabs ----------
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    if(simData) drawChart(simData);
+  };
+});
+
+// ---------- drawing ----------
+function drawAnim(d, idx){
+  const cv = $('anim');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0,0,W,H);
+
+  const x = d.xs[idx];
+  const th = d.ths[idx];
+  const F = d.Fs[idx];
+  const l = d.p.l;
+
+  const railY = H * 0.68;
+  const pxPerMeter = 28;
+  const cartX = W/2 + x * pxPerMeter;
+  const cartY = railY - 20;
+  const cartW = 64;
+  const cartH = 30;
+
+  // rail
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(20, railY + 16);
+  ctx.lineTo(W - 20, railY + 16);
+  ctx.stroke();
+
+  // wheels
+  [cartX - 18, cartX + 18].forEach(wx => {
+    ctx.beginPath();
+    ctx.arc(wx, railY + 16, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fill();
+  });
+
+  // cart
+  ctx.fillStyle = d.pid ? '#16a34a' : '#2563eb';
+  roundRect(ctx, cartX - cartW/2, cartY, cartW, cartH, 8, true, false);
+
+  // force arrow
+  if(d.pid && Math.abs(F) > 0.5){
+    const arrowLen = Math.max(-80, Math.min(80, F * 0.15));
+    const y = cartY - 14;
+    const x1 = cartX;
+    const x2 = cartX + arrowLen;
+
+    ctx.strokeStyle = '#15803d';
+    ctx.fillStyle = '#15803d';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x1, y);
+    ctx.lineTo(x2, y);
+    ctx.stroke();
+
+    const dir = arrowLen >= 0 ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(x2, y);
+    ctx.lineTo(x2 - dir*10, y - 6);
+    ctx.lineTo(x2 - dir*10, y + 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // pendulum pivot
+  const pivotX = cartX;
+  const pivotY = cartY;
+
+  // rod end
+  const tipX = pivotX + l * pxPerMeter * Math.sin(th);
+  const tipY = pivotY - l * pxPerMeter * Math.cos(th);
+
+  // rod
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(pivotX, pivotY);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+
+  // bob
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 10, 0, Math.PI*2);
+  ctx.fillStyle = d.pid ? '#16a34a' : '#ef4444';
+  ctx.fill();
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // info
+  ctx.fillStyle = '#111827';
+  ctx.font = '12px Arial';
+  ctx.fillText(`t = ${d.ts[idx].toFixed(2)} s`, 10, 18);
+  ctx.fillText(`θ = ${(d.ths[idx] * 180 / Math.PI).toFixed(2)}°`, 10, 36);
+  ctx.fillText(`θ̇ = ${d.dths[idx].toFixed(2)} rad/s`, 10, 54);
+  ctx.fillText(`x = ${d.xs[idx].toFixed(3)} m`, 10, 72);
+  if(d.pid) ctx.fillText(`F = ${d.Fs[idx].toFixed(2)} N`, 10, 90);
+}
+
+function roundRect(ctx, x, y, w, h, r, fill, stroke){
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+  if(fill) ctx.fill();
+  if(stroke) ctx.stroke();
+}
+
+function drawChart(d){
+  const cv = $('chart');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0,0,W,H);
+
+  const pad = {l: 54, r: 16, t: 18, b: 34};
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  let xs = [], ys = [];
+  let xLabel = '', yLabel = '';
+
+  if(activeTab === 'angle'){
+    xs = d.ts;
+    ys = d.ths.map(v => v * 180 / Math.PI);
+    xLabel = 't (s)';
+    yLabel = 'θ (°)';
+  } else if(activeTab === 'omega'){
+    xs = d.ts;
+    ys = d.dths;
+    xLabel = 't (s)';
+    yLabel = 'θ̇ (rad/s)';
+  } else if(activeTab === 'pos'){
+    xs = d.ts;
+    ys = d.xs;
+    xLabel = 't (s)';
+    yLabel = 'x (m)';
+  } else if(activeTab === 'force'){
+    xs = d.ts;
+    ys = d.Fs;
+    xLabel = 't (s)';
+    yLabel = 'F (N)';
+  } else {
+    xs = d.ths.map(v => v * 180 / Math.PI);
+    ys = d.dths;
+    xLabel = 'θ (°)';
+    yLabel = 'θ̇ (rad/s)';
+  }
+
+  let minX = Math.min(...xs), maxX = Math.max(...xs);
+  let minY = Math.min(...ys), maxY = Math.max(...ys);
+
+  if(minX === maxX){ minX -= 1; maxX += 1; }
+  if(minY === maxY){ minY -= 1; maxY += 1; }
+
+  const yPad = (maxY - minY) * 0.1 || 0.5;
+  minY -= yPad;
+  maxY += yPad;
+
+  const tx = v => pad.l + (v - minX) / (maxX - minX) * pw;
+  const ty = v => pad.t + (1 - (v - minY) / (maxY - minY)) * ph;
+
+  // grid
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth = 1;
+  for(let i=0;i<=5;i++){
+    const y = pad.t + i * ph / 5;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(W - pad.r, y);
+    ctx.stroke();
+  }
+
+  // axes
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t);
+  ctx.lineTo(pad.l, H - pad.b);
+  ctx.lineTo(W - pad.r, H - pad.b);
+  ctx.stroke();
+
+  // zero line
+  if(minY < 0 && maxY > 0){
+    const y0 = ty(0);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.setLineDash([5,4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y0);
+    ctx.lineTo(W - pad.r, y0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // line
+  ctx.strokeStyle = d.pid ? '#16a34a' : '#2563eb';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<xs.length;i++){
+    const X = tx(xs[i]);
+    const Y = ty(ys[i]);
+    if(i===0) ctx.moveTo(X,Y);
+    else ctx.lineTo(X,Y);
+  }
+  ctx.stroke();
+
+  // current marker
+  if(activeTab !== 'phase' && tIdx > 0){
+    const i = Math.min(tIdx, xs.length - 1);
+    const xc = tx(xs[i]);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    ctx.moveTo(xc, pad.t);
+    ctx.lineTo(xc, H - pad.b);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // labels
+  ctx.fillStyle = '#334155';
+  ctx.font = '12px Arial';
+  ctx.fillText(xLabel, W/2 - 16, H - 8);
+
+  ctx.save();
+  ctx.translate(16, H/2 + 20);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText(yLabel, 0, 0);
+  ctx.restore();
+
+  // small summary
+  const finalThetaDeg = d.ths[d.ths.length-1] * 180 / Math.PI;
+  const finalX = d.xs[d.xs.length-1];
+  const maxAbsTheta = Math.max(...d.ths.map(v => Math.abs(v))) * 180 / Math.PI;
+
+  ctx.fillStyle = '#111827';
+  ctx.font = '12px Arial';
+  ctx.fillText(`кінц. θ = ${finalThetaDeg.toFixed(2)}°`, pad.l + 8, 16);
+  ctx.fillText(`макс |θ| = ${maxAbsTheta.toFixed(2)}°`, pad.l + 130, 16);
+  ctx.fillText(`кінц. x = ${finalX.toFixed(2)} m`, pad.l + 280, 16);
+}
+
+// ---------- run / animation ----------
+function runSim(usePID){
+  if(animId) cancelAnimationFrame(animId);
+
+  simData = usePID ? simulatePID() : simulateOpenLoop();
+  tIdx = 0;
+  playing = true;
+
+  const finalTheta = simData.ths[simData.ths.length - 1] * 180 / Math.PI;
+  const maxForce = Math.max(...simData.Fs.map(v => Math.abs(v)));
+
+  $('status').innerHTML = usePID
+    ? `PID запущено: Kp=${simData.p.Kp}, Ki=${simData.p.Ki}, Kd=${simData.p.Kd}, window=${simData.p.win}<br>
+       Попередній max|F| ≈ <b>${maxForce.toFixed(2)} N</b>, кінцевий θ ≈ <b>${finalTheta.toFixed(2)}°</b>`
+    : `Відкрита система запущена`;
+
+  $('btnStop').textContent = '⏸ Пауза';
+  animate();
+}
+
+$('btnRun').onclick = () => runSim(false);
+$('btnRunPID').onclick = () => runSim(true);
+
+$('btnStop').onclick = () => {
+  if(!simData) return;
+  playing = !playing;
+  $('btnStop').textContent = playing ? '⏸ Пауза' : '▶ Продовжити';
+  if(playing) animate();
+};
+
+$('btnReset').onclick = () => {
+  if(animId) cancelAnimationFrame(animId);
+  simData = null;
+  playing = false;
+  tIdx = 0;
+  $('status').textContent = 'Скинуто';
+  $('btnStop').textContent = '⏸ Пауза';
+
+  ['anim','chart'].forEach(id => {
+    const cv = $(id);
+    cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+  });
+};
+
+function animate(){
+  if(!playing || !simData) return;
+
+  drawAnim(simData, tIdx);
+  drawChart(simData);
+
+  tIdx += 1;
+
+  if(tIdx >= simData.ts.length){
+    tIdx = simData.ts.length - 1;
+    playing = false;
+
+    const finalTheta = simData.ths[simData.ths.length - 1] * 180 / Math.PI;
+    const finalX = simData.xs[simData.xs.length - 1];
+    const stable = Math.abs(finalTheta) < 1.0;
+
+    $('status').innerHTML =
+      (simData.pid ? 'PID завершено. ' : 'Симуляцію завершено. ') +
+      `Кінцевий кут: <b>${finalTheta.toFixed(3)}°</b>, ` +
+      `кінцева позиція: <b>${finalX.toFixed(3)} м</b> — ` +
+      (stable
+        ? '<span class="good">стабілізація добра</span>'
+        : '<span class="warn">ще можна підкрутити PID</span>');
+
+    $('btnStop').textContent = '▶ Продовжити';
+    drawChart(simData);
+    return;
+  }
+
+  animId = requestAnimationFrame(animate);
+}
+
+// ---------- init ----------
+$('presetPID').click();
+</script>
+</body>
+</html>
